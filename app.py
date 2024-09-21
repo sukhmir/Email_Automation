@@ -31,7 +31,8 @@ def authenticate_gmail_service(sender_email):
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 'client_secret_967285117566-b7671q8ftnpli46r68nqtq9e5m507fr7.apps.googleusercontent.com.json', SCOPES)
-            creds = flow.run_local_server(port=8085)
+            creds = flow.run_console()
+
 
         # Save the credentials for future runs
         with open(token_file, 'w') as token:
