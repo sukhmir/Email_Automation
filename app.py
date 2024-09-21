@@ -19,7 +19,7 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 # Global variable for Gmail service
 gmail_service = None
 
-def authenticate_gmail_service(sender_email):
+'''def authenticate_gmail_service(sender_email):
     """Authenticate and get the Gmail service instance only once."""
     global gmail_service
     creds = None
@@ -41,7 +41,34 @@ def authenticate_gmail_service(sender_email):
             token.write(creds.to_json())
 
     # Initialize the Gmail service only once
+    gmail_service = build('gmail', 'v1', credentials=creds)'''
+
+
+def authenticate_gmail_service(sender_email):
+    global gmail_service
+    creds = None
+    token_file = f'token_{sender_email}.json'
+    
+    if os.path.exists(token_file):
+        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            # Switch to run_console for environments without a GUI (e.g., headless servers)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'client_secret_967285117566-b7671q8ftnpli46r68nqtq9e5m507fr7.apps.googleusercontent.com.json', SCOPES)
+            
+            # Use run_console for non-GUI environments (this will print a URL in the logs/terminal)
+            creds = flow.run_console()  # Get verification code from the user and complete the auth flow
+        
+        # Save the credentials
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+
     gmail_service = build('gmail', 'v1', credentials=creds)
+
 
 def send_email(sender_email, recipient_email, subject, body, attachment=None):
     global gmail_service
