@@ -11,18 +11,24 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from extract_and_format_emails import extract_text_from_docx, extract_emails_subjects_bodies
+from dotenv import load_dotenv
 
-# If modifying the SCOPES, delete the file token.json.
+# Load environment variables from .env file
+load_dotenv()
+
+# Get sensitive information from .env
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+CLIENT_SECRET_FILE = os.getenv("CLIENT_SECRET_FILE")
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 # Global variable for Gmail service
 gmail_service = None
 
-def authenticate_gmail_service(sender_email):
+def authenticate_gmail_service():
     """Authenticate and get the Gmail service instance only once."""
     global gmail_service
     creds = None
-    token_file = f'token_{sender_email}.json'
+    token_file = f'token_{SENDER_EMAIL}.json'
     
     if os.path.exists(token_file):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
@@ -32,10 +38,9 @@ def authenticate_gmail_service(sender_email):
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'client_secret_468030347580-a8eaav5vkssou9n2627h8qki7mvk4mvk.apps.googleusercontent.com (1).json', SCOPES)
+                CLIENT_SECRET_FILE, SCOPES)
             creds = flow.run_local_server(port=8081)
 
-        
         # Save the credentials
         with open(token_file, 'w') as token:
             token.write(creds.to_json())
@@ -43,10 +48,10 @@ def authenticate_gmail_service(sender_email):
     # Initialize the Gmail service only once
     gmail_service = build('gmail', 'v1', credentials=creds)
 
-def send_email(sender_email, recipient_email, subject, body, attachment=None):
+def send_email(recipient_email, subject, body, attachment=None):
     global gmail_service
     message = MIMEMultipart()
-    message['From'] = sender_email
+    message['From'] = SENDER_EMAIL
     message['To'] = recipient_email
     message['Subject'] = subject
     message.attach(MIMEText(body, 'plain'))
@@ -71,25 +76,25 @@ def send_email(sender_email, recipient_email, subject, body, attachment=None):
     except Exception as e:
         st.error(f"An error occurred: {e}")
 
-def send_emails_automatically(email_data, sender_email, attachment=None):
+def send_emails_automatically(email_data, attachment=None):
     for entry in email_data:
         recipient_email = entry['email']
         subject = entry['subject']
         body = entry['body']
-        send_email(sender_email, recipient_email, subject, body, attachment)
+        send_email(recipient_email, subject, body, attachment)
 
     # Remove token after sending
-    token_file = f'token_{sender_email}.json'
+    token_file = f'token_{SENDER_EMAIL}.json'
     if os.path.exists(token_file):
         os.remove(token_file)
 
 # Streamlit App
 st.title("Email Automation App")
 
-# Hardcoded sender email
-sender_email = "shoaibsukhmir10@gmail.com"
-st.write(f"Sender Email: {sender_email}")
+# Display sender email (secured via environment variables)
+st.write(f"Sender Email: {SENDER_EMAIL}")
 
+# Upload Word file and PDF attachment
 word_file = st.file_uploader("Upload Word file containing email data", type=["docx"])
 pdf_file = st.file_uploader("Upload PDF Attachment", type=["pdf"])
 
@@ -102,9 +107,9 @@ if st.button("Send Emails"):
         attachment = pdf_file.name if pdf_file else None
 
         # Authenticate once before sending all emails
-        authenticate_gmail_service(sender_email)
+        authenticate_gmail_service()
 
         # Send emails one by one
-        send_emails_automatically(email_data, sender_email, attachment)
+        send_emails_automatically(email_data, attachment)
     else:
         st.error("Please upload a valid Word file with email data.")
