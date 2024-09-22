@@ -39,7 +39,10 @@ def authenticate_gmail_service():
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 CLIENT_SECRET_FILE, SCOPES)
-            creds = flow.run_local_server(port=8081)
+            creds = flow.run_local_server(
+                port=8081, 
+                redirect_uri="https://emailautomation.streamlit.app"
+             )
 
 
         # Save the credentials
