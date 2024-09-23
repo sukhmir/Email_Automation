@@ -1,5 +1,1 @@
-# Ignore environment file
 .env
-
-# Ignore app.py
-app.py
