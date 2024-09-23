@@ -60,7 +60,7 @@ def send_emails_automatically(email_data, sender_email, sender_password, attachm
 # Sample usage of the email sending function
 if __name__ == '__main__':
     sender_email = "shoaibsukhmir10@gmail.com"  # Replace with your email
-    sender_password = "brbh ftzq orag ybig"  # Replace with your app password
+    sender_password = "vrmi wlrk efqm fbth"  # Replace with your app password
 
     # Load the DOCX file and extract email data
     docx_file = 'Test_mail.docx'  # Update this to your file path
