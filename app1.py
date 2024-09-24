@@ -42,22 +42,44 @@ def send_emails_automatically(email_data, sender_email, sender_password, attachm
         send_email(sender_email, sender_password, recipient_email, subject, body, attachment)
         st.success(f"Email sent to {recipient_email}!")
 
+# Function to handle login
+def login(username, password):
+    valid_username = os.getenv("LOGIN_USER")
+    valid_password = os.getenv("LOGIN_PASSWORD")
+    return username == valid_username and password == valid_password
+
 def main():
     st.title("Email Automation App")
 
-    # Retrieve email and password from environment variables
-    sender_email = os.getenv("SENDER_EMAIL")
-    sender_password = os.getenv("SENDER_PASSWORD")
+    # Add a login/signup system
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
 
-    docx_file = st.file_uploader("Upload DOCX File for Email Data", type=["docx"])
-    pdf_attachment = st.file_uploader("Attach a PDF (Optional)", type=["pdf"])
+    if not st.session_state.authenticated:
+        st.subheader("Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if login(username, password):
+                st.session_state.authenticated = True
+                st.success("Logged in successfully!")
+            else:
+                st.error("Invalid username or password.")
+    else:
+        # Retrieve email and password from environment variables
+        sender_email = os.getenv("SENDER_EMAIL")
+        sender_password = os.getenv("SENDER_PASSWORD")
 
-    if st.button("Send Emails"):
-        if docx_file is not None:
-            email_data = extract_emails_subjects_bodies(extract_text_from_docx(BytesIO(docx_file.read())))
-            send_emails_automatically(email_data, sender_email, sender_password, pdf_attachment)
-        else:
-            st.error("Please upload a DOCX file with email data.")
+        st.subheader("Send Emails")
+        docx_file = st.file_uploader("Upload DOCX File for Email Data", type=["docx"])
+        pdf_attachment = st.file_uploader("Attach a PDF (Optional)", type=["pdf"])
+
+        if st.button("Send Emails"):
+            if docx_file is not None:
+                email_data = extract_emails_subjects_bodies(extract_text_from_docx(BytesIO(docx_file.read())))
+                send_emails_automatically(email_data, sender_email, sender_password, pdf_attachment)
+            else:
+                st.error("Please upload a DOCX file with email data.")
 
 if __name__ == '__main__':
     main()
