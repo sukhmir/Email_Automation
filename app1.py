@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from io import BytesIO
-from dotenv import load_dotenv  # Import dotenv to load .env file
+from dotenv import load_dotenv
 from extract_and_format_emails import extract_text_from_docx, extract_emails_subjects_bodies
 
 # Load environment variables from .env file
@@ -25,15 +25,17 @@ def send_email(sender_email, sender_password, recipient_email, subject, body, at
     msg.attach(MIMEText(body, 'plain'))
 
     if attachment:
+        attachment.seek(0)  # Ensure file reading starts from the beginning
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(attachment.read())
         encoders.encode_base64(part)
-        part.add_header('Content-Disposition', 'attachment; filename=attachment.pdf')
+        part.add_header('Content-Disposition', 'attachment; filename="attachment.pdf"')
         msg.attach(part)
 
     server.sendmail(sender_email, recipient_email, msg.as_string())
     server.quit()
 
+# Function to automatically send emails to all recipients
 def send_emails_automatically(email_data, sender_email, sender_password, attachment=None):
     for entry in email_data:
         recipient_email = entry['email']
@@ -48,6 +50,7 @@ def login(username, password):
     valid_password = os.getenv("LOGIN_PASSWORD")
     return username == valid_username and password == valid_password
 
+# Main function for Streamlit app
 def main():
     st.title("Email Automation App")
 
@@ -55,6 +58,7 @@ def main():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
+    # Login screen if not authenticated
     if not st.session_state.authenticated:
         st.subheader("Login")
         username = st.text_input("Username")
@@ -66,7 +70,7 @@ def main():
             else:
                 st.error("Invalid username or password.")
     else:
-        # Retrieve email and password from environment variables
+        # Email sending functionality after successful login
         sender_email = os.getenv("SENDER_EMAIL")
         sender_password = os.getenv("SENDER_PASSWORD")
 
@@ -77,6 +81,8 @@ def main():
         if st.button("Send Emails"):
             if docx_file is not None:
                 email_data = extract_emails_subjects_bodies(extract_text_from_docx(BytesIO(docx_file.read())))
+                if pdf_attachment:
+                    pdf_attachment.seek(0)  # Ensure the PDF is read from the start
                 send_emails_automatically(email_data, sender_email, sender_password, pdf_attachment)
             else:
                 st.error("Please upload a DOCX file with email data.")
