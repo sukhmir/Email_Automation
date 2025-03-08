@@ -36,10 +36,9 @@ def send_email(sender_email, sender_password, recipient_email, subject, body, at
     server.quit()
 
 # Function to automatically send emails to all recipients
-def send_emails_automatically(email_data, sender_email, sender_password, attachment=None):
+def send_emails_automatically(email_data, sender_email, sender_password, subject, attachment=None):
     for entry in email_data:
         recipient_email = entry['email']
-        subject = entry['subject']
         body = entry['body']
         send_email(sender_email, sender_password, recipient_email, subject, body, attachment)
         st.success(f"Email sent to {recipient_email}!")
@@ -78,12 +77,26 @@ def main():
         docx_file = st.file_uploader("Upload DOCX File for Email Data", type=["docx"])
         pdf_attachment = st.file_uploader("Attach a PDF (Optional)", type=["pdf"])
 
+        # Initialize subject as None
+        subject = None
+
+        if docx_file is not None:
+            # Extract text from the DOCX file
+            text = extract_text_from_docx(BytesIO(docx_file.read()))
+            # Extract email data including subjects
+            email_data = extract_emails_subjects_bodies(text)
+            if email_data:
+                # Use the first subject found in the DOCX file as the default subject
+                subject = email_data[0]['subject']
+
+        # Add a text field for the subject, pre-filled with the extracted subject (if any)
+        subject = st.text_input("Subject", value=subject if subject else "", placeholder="Enter the subject for the emails")
+
         if st.button("Send Emails"):
             if docx_file is not None:
-                email_data = extract_emails_subjects_bodies(extract_text_from_docx(BytesIO(docx_file.read())))
                 if pdf_attachment:
                     pdf_attachment.seek(0)  # Ensure the PDF is read from the start
-                send_emails_automatically(email_data, sender_email, sender_password, pdf_attachment)
+                send_emails_automatically(email_data, sender_email, sender_password, subject, pdf_attachment)
             else:
                 st.error("Please upload a DOCX file with email data.")
 

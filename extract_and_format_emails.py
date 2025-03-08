@@ -15,7 +15,7 @@ def extract_emails_subjects_bodies(text):
     emails_data = []
     email_pattern = r'[\w\.-]+@[\w\.-]+'  # Regex to match email addresses
     subject_start_pattern = r'Lines\s+In\s+the\s+Sand:'   # Regex to match subject start pattern
-    body_start_pattern = r'\bDear\b'       # Regex to detect the start of the body
+    body_start_pattern = r'Dear\s+[A-Za-z]+'       # Regex to detect the start of the body
     
     current_email = None
     current_subject = None
