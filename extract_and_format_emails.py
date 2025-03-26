@@ -1,98 +1,168 @@
 import re
 import docx
+from docx.oxml.ns import qn
+from io import BytesIO
+from docx.shared import RGBColor
 
-# Function to extract text from the DOCX file
-def extract_text_from_docx(docx_file):
+def extract_rich_text_from_docx(docx_file):
+    """
+    Extracts rich text from a DOCX file and converts it to HTML while preserving 
+    line breaks, paragraph spacing, and inline text formatting.
+    """
     doc = docx.Document(docx_file)
-    text = []
-    for para in doc.paragraphs:
-        if para.text.strip():  # Only append non-empty paragraphs
-            text.append(para.text.strip())
-    return text
+    html_content = []
 
-# Function to extract emails, subjects, and bodies from the text
-def extract_emails_subjects_bodies(text):
+    for para in doc.paragraphs:
+        if not para.text.strip():  # Preserve blank lines as <p>&nbsp;</p>
+            html_content.append("<p>&nbsp;</p>")
+            continue
+        
+        # Handle indentation for bullet-like or indented content
+        if para.text.startswith("    "):  
+            html_content.append(f'<p style="text-indent: 2em;">{para.text.strip()}</p>')
+            continue
+
+        para_html = []
+        current_hyperlink = None
+        p = para._p  # XML element access
+
+        for elem in p.iterchildren():
+            if elem.tag.endswith('hyperlink'):  
+                rel_id = elem.get(qn('r:id'))
+                if rel_id and para.part and rel_id in para.part.rels:
+                    current_hyperlink = para.part.rels[rel_id].target_ref
+                    for run_elem in elem.iterchildren():
+                        if run_elem.tag.endswith('r'):
+                            run_text, formatting = extract_run_text_and_formatting(run_elem)
+                            formatted_text = apply_formatting(run_text, formatting)
+                            para_html.append(f'<a href="{current_hyperlink}" style="color: blue; text-decoration: underline;">{formatted_text}</a>')
+                    current_hyperlink = None
+            elif elem.tag.endswith('r'):  
+                run_text, formatting = extract_run_text_and_formatting(elem)
+                run_text = run_text.replace("\n", "<br>")
+                formatted_text = apply_formatting(run_text, formatting)
+                if current_hyperlink:
+                    formatted_text = f'<a href="{current_hyperlink}" style="color: blue; text-decoration: underline;">{formatted_text}</a>'
+                para_html.append(formatted_text)
+
+        if para.text.startswith("Where are") or para.text.endswith("?"):
+            html_content.append(f'<p style="margin-left: 20px;">{"".join(para_html)}</p>')
+        else:
+            html_content.append(f"<p>{''.join(para_html)}</p>")
+
+    return "".join(html_content)
+
+def extract_run_text_and_formatting(run_elem):
+    """
+    Extracts text and formatting (bold, italic, underline, color) from a run element.
+    """
+    run_text = ''
+    formatting = {'bold': False, 'italic': False, 'underline': False, 'color': None}
+
+    for t in run_elem.iterchildren():
+        if t.tag.endswith('t'):  
+            run_text += t.text
+        elif t.tag.endswith('rPr'):  
+            for prop in t.iterchildren():
+                if prop.tag.endswith('b'):
+                    formatting['bold'] = True
+                elif prop.tag.endswith('i'):
+                    formatting['italic'] = True
+                elif prop.tag.endswith('u'):
+                    formatting['underline'] = True
+                elif prop.tag.endswith('color') and 'val' in prop.attrib:
+                    formatting['color'] = prop.attrib['val']
+
+    return run_text, formatting
+
+def apply_formatting(text, formatting):
+    """
+    Applies HTML tags based on the formatting dictionary.
+    """
+    formatted_text = text
+    if formatting['color']:
+        formatted_text = f'<span style="color: #{formatting["color"]};">{formatted_text}</span>'
+    if formatting['bold']:
+        formatted_text = f'<strong>{formatted_text}</strong>'
+    if formatting['italic']:
+        formatted_text = f'<em>{formatted_text}</em>'
+    if formatting['underline']:
+        formatted_text = f'<u>{formatted_text}</u>'
+    return formatted_text
+
+def extract_emails_subjects_bodies(html_content):
+    """
+    Extracts emails, subjects, and bodies from the provided HTML content.
+    This version ensures better handling of emails, subject headers, and body text.
+    """
     emails_data = []
-    email_pattern = r'[\w\.-]+@[\w\.-]+'  # Regex to match email addresses
-    subject_start_pattern = r'Lines\s+In\s+the\s+Sand:'   # Regex to match subject start pattern
-    body_start_pattern = r'Dear\s+[A-Za-z]+'       # Regex to detect the start of the body
+    
+    if isinstance(html_content, list):
+        html_content = "".join(html_content)
+    
+    paragraphs = re.split(r'(?=<p>|</p>)', html_content)
+    paragraphs = [p for p in paragraphs if p.strip() and p not in ['<p>', '</p>']]
+    
+    email_pattern = re.compile(r'[\w\.-]+@[\w\.-]+(?:\.[\w]+)+')
+    subject_pattern = re.compile(r'Lines\s+In\s+the\s+Sand:\s*(.*?)(?:\.|$)', re.IGNORECASE)
+    body_start_pattern = re.compile(r'Dear\s+[A-Za-z]+', re.IGNORECASE)
     
     current_email = None
     current_subject = None
     current_body = []
+    in_body = False
     
-    # Process the text line by line
-    for line in text:
-        if re.match(email_pattern, line):  # Detect email address
-            # If there is an existing email, save the previous data
+    for para in paragraphs:
+        email_match = email_pattern.search(para)
+        if email_match:
             if current_email:
                 emails_data.append({
                     'email': current_email,
                     'subject': current_subject,
-                    'body': format_email_body("\n".join(current_body).strip())
+                    'body': format_email_body("".join(current_body))
                 })
-            current_email = line
+            current_email = email_match.group()
             current_subject = None
             current_body = []
-        elif re.search(subject_start_pattern, line):  # Detect subject start using regex
-            current_subject = extract_subject_after_pattern(line, subject_start_pattern)
-        elif re.search(body_start_pattern, line):  # Detect start of body using regex
-            current_body = [line]
-        else:
-            current_body.append(line)  # Continue accumulating the body
-
-    # Add the last email entry after the loop ends
+            in_body = False
+            continue
+        
+        if not in_body and not current_subject:
+            subject_match = subject_pattern.search(para)
+            if subject_match:
+                current_subject = subject_match.group(1).strip()
+                if not current_subject.endswith('.'):
+                    current_subject += '.'
+                continue
+        
+        if not in_body and body_start_pattern.search(para):
+            in_body = True
+        
+        if in_body or (current_email and not current_subject):
+            current_body.append(para)
+    
     if current_email:
         emails_data.append({
             'email': current_email,
             'subject': current_subject,
-            'body': format_email_body("\n".join(current_body).strip())
+            'body': format_email_body("".join(current_body))
         })
     
     return emails_data
-
-# Function to extract the subject after the specific pattern and end at the first full stop
-def extract_subject_after_pattern(line, pattern):
-    # Find the part of the line that starts after the regex pattern
-    match = re.search(pattern, line)
-    if match:
-        # Get the remaining text after the pattern
-        subject_part = line[match.end():].strip()
-        # Split the remaining part at the first full stop and return the subject
-        if '.' in subject_part:
-            return subject_part.split('.')[0].strip() + '.'  # Return text until the first full stop
-        return subject_part  # Return the whole subject if no full stop found
-    return None
-
-# Function to format the email body professionally
-def format_email_body(body):
-    # Add greetings, signatures, and structure
-    formatted_body = []
-
-    # Add greeting if "Dear" is not in the first line
-    if not body.startswith("Dear"):
-        formatted_body.append("Dear Recipient,")
-
-    # Break paragraphs with double line breaks and indentations
-    paragraphs = body.split('\n')
-    for paragraph in paragraphs:
-        formatted_body.append(paragraph.strip())  # Remove any extra spaces
-
-    return "\n\n".join(formatted_body)
-
-# Example usage
-docx_file = 'Test_mail.docx' 
-text = extract_text_from_docx(docx_file)
-
-# Extract emails, subjects, and bodies with professional formatting
-emails_subjects_bodies = extract_emails_subjects_bodies(text)
-
-# Output results
-if not emails_subjects_bodies:
-    print("No email found")
-else:
-    for entry in emails_subjects_bodies:
-        print(f"Email: {entry['email']}")
-        print(f"Subject: {entry['subject']}")
-        print(f"Body:\n{entry['body']}")
-        print('-' * 50)
+def format_email_body(body_html):
+    """
+    Formats the email body with proper HTML structure.
+    Ensures proper greetings and signatures.
+    """
+    # Clean up the HTML
+    body_html = re.sub(r'<p>\s*</p>', '', body_html)  # Remove empty paragraphs
+    
+    # Add greeting if not present
+    if not re.search(r'Dear\s+[A-Za-z]+', body_html, re.IGNORECASE):
+        body_html = f"<p>Dear Recipient,</p>{body_html}"
+    
+    # Add signature if not present
+    #if not re.search(r'(Sincerely|Regards|Best\s+wishes)', body_html, re.IGNORECASE):
+        #body_html = f"{body_html}<p>Sincerely,</p><p>The Team</p>"
+    
+    return body_html
