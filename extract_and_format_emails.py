@@ -172,8 +172,8 @@ def format_email_body(body_html):
     body_html = re.sub(r'<p>\s*</p>', '', body_html)  # Remove empty paragraphs
     
     # Add greeting if not present
-    if not re.search(r'Dear\s+[A-Za-z]+', body_html, re.IGNORECASE):
-        body_html = f"<p>Dear Recipient,</p>{body_html}"
+    #if not re.search(r'Dear\s+[A-Za-z]+', body_html, re.IGNORECASE):
+       # body_html = f"<p>Dear Recipient,</p>{body_html}"
     
     # Add signature if not present
     #if not re.search(r'(Sincerely|Regards|Best\s+wishes)', body_html, re.IGNORECASE):
