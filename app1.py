@@ -22,14 +22,17 @@ def send_email(
     attachment: BytesIO = None
 ) -> bool:
     """
-    Sends email with improved error handling and logging.
+    Sends email ensuring Times New Roman is used in the body.
     """
     try:
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = recipient_email
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'html'))
+        
+        # Apply Times New Roman font
+        styled_body = f'<div style="font-family:\'Times New Roman\', serif;">{body}</div>'
+        msg.attach(MIMEText(styled_body, 'html'))
 
         if attachment:
             attachment.seek(0)
@@ -51,6 +54,7 @@ def send_email(
     except Exception as e:
         st.error(f"Failed to send email to {recipient_email}: {str(e)}")
         return False
+
 
 def send_emails_automatically(
     email_data: list,

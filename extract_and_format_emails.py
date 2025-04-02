@@ -54,10 +54,10 @@ def extract_rich_text_from_docx(docx_file):
 
 def extract_run_text_and_formatting(run_elem):
     """
-    Extracts text and formatting (bold, italic, underline, color) from a run element.
+    Extracts text and formatting (bold, italic, underline, color, font) from a run element.
     """
     run_text = ''
-    formatting = {'bold': False, 'italic': False, 'underline': False, 'color': None}
+    formatting = {'bold': False, 'italic': False, 'underline': False, 'color': None, 'font': None}
 
     for t in run_elem.iterchildren():
         if t.tag.endswith('t'):  
@@ -72,23 +72,37 @@ def extract_run_text_and_formatting(run_elem):
                     formatting['underline'] = True
                 elif prop.tag.endswith('color') and 'val' in prop.attrib:
                     formatting['color'] = prop.attrib['val']
+                elif prop.tag.endswith('rFonts') and 'ascii' in prop.attrib:
+                    formatting['font'] = prop.attrib['ascii']
+                    print(f"Detected Font: {formatting['font']}")  # Print detected font
 
     return run_text, formatting
 
+
 def apply_formatting(text, formatting):
     """
-    Applies HTML tags based on the formatting dictionary.
+    Applies HTML tags based on the formatting dictionary, including font.
+    Ensures all text is styled in Times New Roman.
     """
     formatted_text = text
+    style = 'font-family: "Times New Roman", serif;'  # Ensure Times New Roman font
+
     if formatting['color']:
-        formatted_text = f'<span style="color: #{formatting["color"]};">{formatted_text}</span>'
+        style += f' color: #{formatting["color"]};'
+    
+    if style:
+        formatted_text = f'<span style="{style}">{formatted_text}</span>'
+
     if formatting['bold']:
         formatted_text = f'<strong>{formatted_text}</strong>'
     if formatting['italic']:
         formatted_text = f'<em>{formatted_text}</em>'
     if formatting['underline']:
         formatted_text = f'<u>{formatted_text}</u>'
+
     return formatted_text
+
+
 
 def extract_emails_subjects_bodies(html_content):
     """
