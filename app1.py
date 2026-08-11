@@ -128,8 +128,8 @@ def main() -> None:
         st.session_state.authenticated = False
     if "email_data" not in st.session_state:
         st.session_state.email_data = []
-    if "docx_processed" not in st.session_state:
-        st.session_state.docx_processed = False
+    if "loaded_docx_key" not in st.session_state:
+        st.session_state.loaded_docx_key = None
 
     # ---- Simple login (username + password only) ----
     if not st.session_state.authenticated:
@@ -152,7 +152,7 @@ def main() -> None:
     if st.sidebar.button("Logout"):
         st.session_state.authenticated = False
         st.session_state.email_data = []
-        st.session_state.docx_processed = False
+        st.session_state.loaded_docx_key = None
         st.rerun()
 
     st.markdown("**Sender account (used to send emails)**")
@@ -177,15 +177,31 @@ def main() -> None:
             type=["pdf", "docx", "xlsx"],
         )
 
-    if docx_file and not st.session_state.docx_processed:
-        with st.spinner("Processing DOCX file..."):
-            try:
-                html_content = extract_rich_text_from_docx(BytesIO(docx_file.read()))
-                st.session_state.email_data = extract_emails_subjects_bodies(html_content)
-                st.session_state.docx_processed = True
-                st.success("DOCX file processed successfully!")
-            except Exception as e:
-                st.error(f"Error processing DOCX file: {str(e)}")
+    # Re-parse whenever a new/different DOCX is uploaded
+    if docx_file is None:
+        if st.session_state.loaded_docx_key is not None:
+            st.session_state.email_data = []
+            st.session_state.loaded_docx_key = None
+    else:
+        docx_key = f"{docx_file.name}:{docx_file.size}"
+        if docx_key != st.session_state.loaded_docx_key:
+            with st.spinner("Processing DOCX file..."):
+                try:
+                    html_content = extract_rich_text_from_docx(BytesIO(docx_file.read()))
+                    st.session_state.email_data = extract_emails_subjects_bodies(html_content)
+                    st.session_state.loaded_docx_key = docx_key
+                    st.success(
+                        f"Processed `{docx_file.name}` — "
+                        f"{len(st.session_state.email_data)} recipient(s) found."
+                    )
+                except Exception as e:
+                    st.session_state.email_data = []
+                    st.session_state.loaded_docx_key = None
+                    st.error(f"Error processing DOCX file: {str(e)}")
+
+    if st.session_state.email_data:
+        st.markdown("**Recipients from current file:**")
+        st.write([entry["email"] for entry in st.session_state.email_data])
 
     default_subject = (
         st.session_state.email_data[0]["subject"]
