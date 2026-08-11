@@ -2,6 +2,7 @@ import streamlit as st
 import smtplib
 import os
 import time
+import hashlib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -177,31 +178,38 @@ def main() -> None:
             type=["pdf", "docx", "xlsx"],
         )
 
-    # Re-parse whenever a new/different DOCX is uploaded
+    # Always extract recipients from the uploaded file CONTENT (bytes), never by filename
     if docx_file is None:
-        if st.session_state.loaded_docx_key is not None:
-            st.session_state.email_data = []
-            st.session_state.loaded_docx_key = None
+        st.session_state.email_data = []
+        st.session_state.loaded_docx_key = None
     else:
-        docx_key = f"{docx_file.name}:{docx_file.size}"
-        if docx_key != st.session_state.loaded_docx_key:
-            with st.spinner("Processing DOCX file..."):
+        file_bytes = docx_file.getvalue()
+        content_hash = hashlib.sha256(file_bytes).hexdigest()
+
+        if content_hash != st.session_state.loaded_docx_key:
+            with st.spinner("Reading emails from uploaded file content..."):
                 try:
-                    html_content = extract_rich_text_from_docx(BytesIO(docx_file.read()))
-                    st.session_state.email_data = extract_emails_subjects_bodies(html_content)
-                    st.session_state.loaded_docx_key = docx_key
+                    html_content = extract_rich_text_from_docx(BytesIO(file_bytes))
+                    parsed = extract_emails_subjects_bodies(html_content)
+                    st.session_state.email_data = parsed
+                    st.session_state.loaded_docx_key = content_hash
                     st.success(
-                        f"Processed `{docx_file.name}` — "
-                        f"{len(st.session_state.email_data)} recipient(s) found."
+                        f"Found {len(parsed)} recipient(s) inside the uploaded file content."
                     )
                 except Exception as e:
                     st.session_state.email_data = []
                     st.session_state.loaded_docx_key = None
-                    st.error(f"Error processing DOCX file: {str(e)}")
+                    st.error(f"Error reading uploaded file content: {str(e)}")
+
+        if st.button("Re-read uploaded file"):
+            st.session_state.loaded_docx_key = None
+            st.rerun()
 
     if st.session_state.email_data:
-        st.markdown("**Recipients from current file:**")
+        st.markdown("**Recipients pulled from uploaded file content:**")
         st.write([entry["email"] for entry in st.session_state.email_data])
+    elif docx_file is not None:
+        st.warning("No email addresses were found in the uploaded file content.")
 
     default_subject = (
         st.session_state.email_data[0]["subject"]
