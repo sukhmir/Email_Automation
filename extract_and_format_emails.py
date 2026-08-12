@@ -104,10 +104,22 @@ def apply_formatting(text, formatting):
 
 
 
+def _visible_paragraph_text(para_html: str) -> str:
+    """Visible words only — ignore href/mailto targets Word hides behind links."""
+    text = re.sub(r'''<a\s+[^>]*href=["'][^"']*["'][^>]*>''', '', para_html, flags=re.I)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'HYPERLINK\s+"[^"]*"', ' ', text, flags=re.I)
+    text = re.sub(r'mailto:', ' ', text, flags=re.I)
+    text = re.sub(r'&nbsp;', ' ', text, flags=re.I)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 def extract_emails_subjects_bodies(html_content):
     """
     Extracts emails, subjects, and bodies from the provided HTML content.
-    This version ensures better handling of emails, subject headers, and body text.
+    Recipients are only emails that appear as their own visible paragraph,
+    not addresses buried in hyperlinks or signatures.
     """
     emails_data = []
     
@@ -117,7 +129,9 @@ def extract_emails_subjects_bodies(html_content):
     paragraphs = re.split(r'(?=<p>|</p>)', html_content)
     paragraphs = [p for p in paragraphs if p.strip() and p not in ['<p>', '</p>']]
     
-    email_pattern = re.compile(r'[\w\.-]+@[\w\.-]+(?:\.[\w]+)+')
+    standalone_email = re.compile(
+        r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'
+    )
     subject_pattern = re.compile(r'Lines\s+In\s+the\s+Sand:\s*(.*?)(?:\.|$)', re.IGNORECASE)
     body_start_pattern = re.compile(r'Dear\s+[A-Za-z]+', re.IGNORECASE)
     
@@ -127,15 +141,15 @@ def extract_emails_subjects_bodies(html_content):
     in_body = False
     
     for para in paragraphs:
-        email_match = email_pattern.search(para)
-        if email_match:
+        visible = _visible_paragraph_text(para)
+        if standalone_email.match(visible):
             if current_email:
                 emails_data.append({
                     'email': current_email,
                     'subject': current_subject,
                     'body': format_email_body("".join(current_body))
                 })
-            current_email = email_match.group()
+            current_email = visible
             current_subject = None
             current_body = []
             in_body = False

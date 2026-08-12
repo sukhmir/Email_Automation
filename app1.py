@@ -14,13 +14,27 @@ from extract_and_format_emails import extract_rich_text_from_docx, extract_email
 load_dotenv()
 
 
+def _secrets_file_exists() -> bool:
+    """True only if a Streamlit secrets.toml is actually present."""
+    return any(
+        os.path.isfile(path)
+        for path in (
+            os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+            os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml"),
+        )
+    )
+
+
 def get_secret(key: str, default: str = None) -> str:
     """Prefer Streamlit secrets (Cloud), then .env (local)."""
-    try:
-        if key in st.secrets:
-            return str(st.secrets[key]).strip()
-    except Exception:
-        pass
+    # Do not touch st.secrets unless the file exists — Streamlit shows a
+    # red error in the UI even when the missing-file exception is caught.
+    if _secrets_file_exists():
+        try:
+            if key in st.secrets:
+                return str(st.secrets[key]).strip()
+        except Exception:
+            pass
     value = os.getenv(key, default)
     return value.strip() if isinstance(value, str) else value
 
@@ -178,30 +192,29 @@ def main() -> None:
             type=["pdf", "docx", "xlsx"],
         )
 
-    # Always extract recipients from the uploaded file CONTENT (bytes), never by filename
+    # Always parse the current upload bytes. Do not reuse a previous recipient list.
     if docx_file is None:
         st.session_state.email_data = []
         st.session_state.loaded_docx_key = None
     else:
         file_bytes = docx_file.getvalue()
         content_hash = hashlib.sha256(file_bytes).hexdigest()
+        try:
+            html_content = extract_rich_text_from_docx(BytesIO(file_bytes))
+            parsed = extract_emails_subjects_bodies(html_content)
+            st.session_state.email_data = parsed
+            if content_hash != st.session_state.loaded_docx_key:
+                st.success(
+                    f"Found {len(parsed)} recipient(s) from visible text in this upload."
+                )
+            st.session_state.loaded_docx_key = content_hash
+        except Exception as e:
+            st.session_state.email_data = []
+            st.session_state.loaded_docx_key = None
+            st.error(f"Error reading uploaded file content: {str(e)}")
 
-        if content_hash != st.session_state.loaded_docx_key:
-            with st.spinner("Reading emails from uploaded file content..."):
-                try:
-                    html_content = extract_rich_text_from_docx(BytesIO(file_bytes))
-                    parsed = extract_emails_subjects_bodies(html_content)
-                    st.session_state.email_data = parsed
-                    st.session_state.loaded_docx_key = content_hash
-                    st.success(
-                        f"Found {len(parsed)} recipient(s) inside the uploaded file content."
-                    )
-                except Exception as e:
-                    st.session_state.email_data = []
-                    st.session_state.loaded_docx_key = None
-                    st.error(f"Error reading uploaded file content: {str(e)}")
-
-        if st.button("Re-read uploaded file"):
+        if st.button("Clear file and start over"):
+            st.session_state.email_data = []
             st.session_state.loaded_docx_key = None
             st.rerun()
 
